@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coin App</title>
+<link rel="stylesheet" href="css/style.css">
+
+<meta name="monetag" content="66380729c072eba5c9786f6ec8ebae68">
+
+<!-- ==== MONETAG: paste your Interstitial zone script here, exactly as Monetag gives it to you ==== -->
+<!-- <script src="//libtl.com/sdk.js" data-zone="XXXXXXX" data-sdk="show_XXXXXXX"></script> -->
+<!-- ================================================================================================ -->
+</head>
+<body>
+
+  <!-- AUTH SCREENS -->
+  <div id="auth-screen" class="screen active">
+    <div class="auth-box">
+      <h1 class="logo">COIN<span>APP</span></h1>
+
+      <div id="login-form">
+        <h2>Log In</h2>
+        <input id="login-username" type="text" placeholder="Username" autocomplete="username">
+        <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+        <button class="btn-primary" onclick="handleLogin()">Log In</button>
+        <p class="switch-link">No account? <a onclick="showSignup()">Sign up</a></p>
+        <p id="login-error" class="error-text"></p>
+      </div>
+
+      <div id="signup-form" class="hidden">
+        <h2>Create Account</h2>
+        <input id="signup-username" type="text" placeholder="Username" autocomplete="username">
+        <input id="signup-password" type="password" placeholder="Password" autocomplete="new-password">
+        <input id="signup-referral" type="text" placeholder="Referral code (optional)">
+        <button class="btn-primary" onclick="handleSignup()">Sign Up</button>
+        <p class="switch-link">Have an account? <a onclick="showLogin()">Log in</a></p>
+        <p id="signup-error" class="error-text"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app-screen" class="screen">
+    <header class="topbar">
+      <h1 class="logo small">COIN<span>APP</span></h1>
+      <button class="logout-btn" onclick="handleLogout()">Log out</button>
+    </header>
+
+    <!-- HOME -->
+    <section id="home-view" class="view active">
+      <div class="gold-card">
+        <div class="gold-card-top">
+          <span id="card-username">username</span>
+          <span id="card-rank" class="rank-pill">Bronze</span>
+        </div>
+        <div class="gold-card-coins">
+          <span id="card-coins">0</span>
+          <span class="coin-label">coins this week</span>
+        </div>
+      </div>
+
+      <div class="message-center">
+        <h3>📢 Messages</h3>
+        <div id="message-list" class="message-list">
+          <p class="empty-text">No messages yet.</p>
+        </div>
+      </div>
+
+      <button id="earn-btn" class="earn-btn" onclick="handleEarnClick()">
+        EARN COINS
+      </button>
+      <p id="cooldown-text" class="cooldown-text"></p>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="leaderboard-view" class="view">
+      <h2 class="view-title">🏆 Leaderboard</h2>
+      <div id="leaderboard-list" class="leaderboard-list"></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="profile-view" class="view">
+      <h2 class="view-title">Profile</h2>
+
+      <div class="profile-card">
+        <label>Username</label>
+        <input id="profile-username" type="text">
+        <button class="btn-secondary" onclick="handleUpdateProfile()">Save changes</button>
+        <p id="profile-msg" class="success-text"></p>
+      </div>
+
+      <div class="profile-stats">
+        <div class="stat-row"><span>Rank</span><span id="profile-rank">Bronze</span></div>
+        <div class="stat-row"><span>Lifetime coins</span><span id="profile-lifetime">0</span></div>
+        <div class="stat-row"><span>Coins this week</span><span id="profile-coins">0</span></div>
+      </div>
+
+      <div class="referral-card">
+        <h3>Invite friends</h3>
+        <p>Earn 1000 coins per referral</p>
+        <div class="referral-code-box">
+          <span id="referral-code">------</span>
+          <button class="btn-secondary" onclick="copyReferralCode()">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-view="home-view" onclick="switchView('home-view', this)">🏠<span>Home</span></button>
+      <button class="nav-btn" data-view="leaderboard-view" onclick="switchView('leaderboard-view', this)">🏆<span>Leaderboard</span></button>
+      <button class="nav-btn" data-view="profile-view" onclick="switchView('profile-view', this)">👤<span>Profile</span></button>
+    </nav>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ads.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
