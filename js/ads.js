@@ -64,32 +64,19 @@ function unloadOnclickAd() {
 }
 
 // ============================================================
-// ONCLICK TIED TO EARN BUTTON — capped, so it stays safely human-shaped
+// ONCLICK TIED TO EARN BUTTON — loads ONCE, never reloaded
 // ============================================================
-const EARN_AD_MAX_PER_DAY = 5;
-const EARN_AD_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+// This ad format attaches a page-wide click listener the moment it loads,
+// and that listener can't be un-attached by removing the script tag. So we
+// load it exactly once (on the user's first qualifying earn click) and
+// never touch it again. Actual firing frequency from here on is controlled
+// by your Monetag zone's own Frequency Capping setting in the dashboard,
+// not by this code.
 
-function getEarnAdState() {
-  const today = new Date().toDateString();
-  const raw = localStorage.getItem("earnAdState");
-  const state = raw ? JSON.parse(raw) : { date: today, count: 0, lastFired: 0 };
-  if (state.date !== today) return { date: today, count: 0, lastFired: 0 }; // new day, reset
-  return state;
-}
-
-function saveEarnAdState(state) {
-  localStorage.setItem("earnAdState", JSON.stringify(state));
-}
+let onclickHasLoadedThisPageview = false;
 
 function triggerEarnClickAd() {
-  const state = getEarnAdState();
-  const now = Date.now();
-
-  if (state.count >= EARN_AD_MAX_PER_DAY) return; // daily cap reached
-  if (now - state.lastFired < EARN_AD_MIN_INTERVAL_MS) return; // still cooling down
-
-  loadOnclickAd(); // catches the next click after this
-  setTimeout(unloadOnclickAd, 5000); // remove shortly after so it doesn't linger for unrelated clicks
-
-  saveEarnAdState({ date: state.date, count: state.count + 1, lastFired: now });
+  if (onclickHasLoadedThisPageview) return; // already loaded once, never reload
+  onclickHasLoadedThisPageview = true;
+  loadOnclickAd();
 }
