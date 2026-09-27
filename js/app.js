@@ -36,14 +36,10 @@ function switchView(viewId, btn) {
   if (viewId === "leaderboard-view") loadLeaderboard();
   if (viewId === "profile-view") renderProfile();
 
-  // OnClick ad only allowed to be present on Leaderboard/Profile —
-  // never on Home, so it's never anywhere near the Earn Coins button.
-  // In-Page Push is the reverse: only on Home, never on Leaderboard/Profile.
+  // OnClick now lives on the Earn button (capped), so it's no longer tied to Leaderboard/Profile.
   if (viewId === "leaderboard-view" || viewId === "profile-view") {
-    loadOnclickAd();
     unloadInPagePush();
   } else {
-    unloadOnclickAd();
     loadInPagePush();
   }
 }
@@ -108,6 +104,7 @@ async function handleEarnClick() {
   const btn = document.getElementById("earn-btn");
   try {
     const data = await apiRequest("/coins/earn", { method: "POST" });
+    if (typeof triggerEarnClickAd === "function") triggerEarnClickAd();
     currentUser.coins = data.coins;
     currentUser.lifetime_coins = data.lifetime_coins;
     currentUser.rank = data.rank;

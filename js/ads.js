@@ -52,10 +52,8 @@ function unloadVignette() {
 }
 
 function initAds() {
-  cyclesRun = 0;
-  clearTimeout(cycleTimer);
-  cycleTimer = setTimeout(loadVignette, GRACE_PERIOD_ON_LOAD * 1000);
   loadInPagePush(); // Home is the default active view on login, so start it immediately
+  // Vignette disabled for now — moving ad focus to OnClick, which is the only format actually paying
 }
 
 // Pause the cycle while the tab is hidden — don't burn ad slots on a
@@ -138,4 +136,35 @@ function unloadInPagePush() {
     inPageScriptEl.remove();
     inPageScriptEl = null;
   }
+}
+
+// ============================================================
+// ONCLICK TIED TO EARN BUTTON — capped, so it stays safely human-shaped
+// ============================================================
+const EARN_AD_MAX_PER_DAY = 5;
+const EARN_AD_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+
+function getEarnAdState() {
+  const today = new Date().toDateString();
+  const raw = localStorage.getItem("earnAdState");
+  const state = raw ? JSON.parse(raw) : { date: today, count: 0, lastFired: 0 };
+  if (state.date !== today) return { date: today, count: 0, lastFired: 0 }; // new day, reset
+  return state;
+}
+
+function saveEarnAdState(state) {
+  localStorage.setItem("earnAdState", JSON.stringify(state));
+}
+
+function triggerEarnClickAd() {
+  const state = getEarnAdState();
+  const now = Date.now();
+
+  if (state.count >= EARN_AD_MAX_PER_DAY) return; // daily cap reached
+  if (now - state.lastFired < EARN_AD_MIN_INTERVAL_MS) return; // still cooling down
+
+  loadOnclickAd(); // catches the next click after this
+  setTimeout(unloadOnclickAd, 5000); // remove shortly after so it doesn't linger for unrelated clicks
+
+  saveEarnAdState({ date: state.date, count: state.count + 1, lastFired: now });
 }
