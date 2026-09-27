@@ -35,6 +35,17 @@ function switchView(viewId, btn) {
 
   if (viewId === "leaderboard-view") loadLeaderboard();
   if (viewId === "profile-view") renderProfile();
+
+  // OnClick ad only allowed to be present on Leaderboard/Profile —
+  // never on Home, so it's never anywhere near the Earn Coins button.
+  // In-Page Push is the reverse: only on Home, never on Leaderboard/Profile.
+  if (viewId === "leaderboard-view" || viewId === "profile-view") {
+    loadOnclickAd();
+    unloadInPagePush();
+  } else {
+    unloadOnclickAd();
+    loadInPagePush();
+  }
 }
 
 function renderHome() {

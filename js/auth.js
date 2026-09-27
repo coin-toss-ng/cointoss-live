@@ -58,4 +58,7 @@ function handleLogout() {
   clearToken();
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("auth-screen").classList.add("active");
+  // safety: never leave any ad script active past logout
+  if (typeof unloadOnclickAd === "function") unloadOnclickAd();
+  if (typeof unloadInPagePush === "function") unloadInPagePush();
 }

@@ -1,5 +1,5 @@
 // ==== EDIT THIS after you deploy your Cloudflare Worker ====
-const API_URL = "https://coin-app-backend.cointoss-app-ng.workers.dev";
+const API_URL = "https://coin-app-backend.YOUR_SUBDOMAIN.workers.dev";
 // =============================================================
 
 function getToken() {

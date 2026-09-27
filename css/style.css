@@ -21,7 +21,7 @@ body {
 .hidden { display: none !important; }
 
 /* ---------- AUTH ---------- */
-#auth-screen.active {
+#auth-screen {
   min-height: 100vh;
   display: flex;
   align-items: center;

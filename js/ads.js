@@ -1,80 +1,141 @@
 // ============================================================
-// MONETAG INTERSTITIAL — timed, independent of the earn-click cooldown
+// MONETAG VIGNETTE BANNER — loaded/unloaded on a timed cycle
 // ============================================================
-// SETUP:
-// 1. In your Monetag dashboard, create an "Interstitial" zone.
-// 2. Monetag will give you a script snippet that looks like:
-//      <script src="//libtl.com/sdk.js" data-zone="XXXXXXX" data-sdk="show_XXXXXXX"></script>
-//    Paste that snippet into index.html's <head> (there's a marked spot for it).
-// 3. Replace SHOW_FUNCTION_NAME below with the exact function name Monetag gave you
-//    (it's the same string as the data-sdk value, e.g. "show_9161234").
+// Since Vignette Banner is a self-managing script (Monetag controls its
+// own internal trigger logic), we can't pause it mid-flight. What we CAN
+// control is whether the script exists on the page at all. So: load it
+// for an "active window", then physically remove it for a "rest window",
+// on repeat. This keeps ad exposure bursty-but-capped instead of constant.
 // ============================================================
 
-const SHOW_FUNCTION_NAME = "show_9161234"; // <-- replace with your real Monetag function name
+const VIGNETTE_ZONE = "11906756"; // from your Monetag zone
+const VIGNETTE_SRC = "https://n6wxm.com/vignette.min.js";
 
-// ---- Tunable settings ----
-const MIN_SECONDS_BETWEEN_ADS = 75;   // floor: never show more often than this
-const MAX_SECONDS_BETWEEN_ADS = 120;  // ceiling: randomized so timing isn't robotic
-const GRACE_PERIOD_ON_LOAD = 20;      // don't show an ad in the first N seconds of a session
-const MAX_ADS_PER_SESSION = 12;       // hard cap so one long session can't over-serve
-const COOLDOWN_BUFFER_SECONDS = 2;    // never show while the earn-click cooldown is active
+const ACTIVE_WINDOW_SECONDS = 25;   // how long the script is allowed to be live
+const REST_WINDOW_MIN = 60;         // minimum rest before it's allowed back
+const REST_WINDOW_MAX = 90;         // maximum rest (randomized so it's not robotic)
+const GRACE_PERIOD_ON_LOAD = 20;    // don't load any ad script in the first N seconds of a session
+const MAX_CYCLES_PER_SESSION = 10;  // hard cap so a long session can't over-serve
 
-let adsShownThisSession = 0;
-let adTimer = null;
+let scriptEl = null;
+let cycleTimer = null;
+let cyclesRun = 0;
 
-function scheduleNextAd() {
-  if (adsShownThisSession >= MAX_ADS_PER_SESSION) return; // stop for the rest of this session
+function loadVignette() {
+  if (scriptEl) return; // already loaded, don't double-insert
 
-  const delaySeconds =
-    MIN_SECONDS_BETWEEN_ADS + Math.random() * (MAX_SECONDS_BETWEEN_ADS - MIN_SECONDS_BETWEEN_ADS);
+  scriptEl = document.createElement("script");
+  scriptEl.dataset.zone = VIGNETTE_ZONE;
+  scriptEl.src = VIGNETTE_SRC;
+  scriptEl.id = "vignette-ad-script";
+  document.body.appendChild(scriptEl);
 
-  clearTimeout(adTimer);
-  adTimer = setTimeout(tryShowAd, delaySeconds * 1000);
+  cyclesRun += 1;
+
+  // after the active window, tear it down and schedule the next rest+active cycle
+  cycleTimer = setTimeout(unloadVignette, ACTIVE_WINDOW_SECONDS * 1000);
 }
 
-function tryShowAd() {
-  // Skip if the earn-click cooldown is actively running — keeps the ad from ever
-  // feeling tied to the click itself, which is what we want to avoid.
-  const earnBtn = document.getElementById("earn-btn");
-  if (earnBtn && earnBtn.disabled) {
-    // cooldown in progress — try again shortly instead of skipping the slot entirely
-    adTimer = setTimeout(tryShowAd, COOLDOWN_BUFFER_SECONDS * 1000);
-    return;
+function unloadVignette() {
+  if (scriptEl) {
+    scriptEl.remove();
+    scriptEl = null;
   }
 
-  // Skip if the tab isn't visible — showing ads to a backgrounded tab wastes the
-  // slot and looks like a fraudulent impression to the ad network.
-  if (document.hidden) {
-    adTimer = setTimeout(tryShowAd, 5000);
-    return;
-  }
+  if (cyclesRun >= MAX_CYCLES_PER_SESSION) return; // done for this session
 
-  const showFn = window[SHOW_FUNCTION_NAME];
-  if (typeof showFn === "function") {
-    showFn()
-      .then(() => {
-        adsShownThisSession += 1;
-        scheduleNextAd();
-      })
-      .catch(() => {
-        // ad failed to load / was skipped by the network — still move on
-        scheduleNextAd();
-      });
-  } else {
-    // SDK not loaded yet (e.g. ad blocker, slow network) — retry later
-    adTimer = setTimeout(tryShowAd, 10000);
-  }
+  const restSeconds =
+    REST_WINDOW_MIN + Math.random() * (REST_WINDOW_MAX - REST_WINDOW_MIN);
+
+  clearTimeout(cycleTimer);
+  cycleTimer = setTimeout(loadVignette, restSeconds * 1000);
 }
 
 function initAds() {
-  adsShownThisSession = 0;
-  clearTimeout(adTimer);
-  adTimer = setTimeout(scheduleNextAd, GRACE_PERIOD_ON_LOAD * 1000);
+  cyclesRun = 0;
+  clearTimeout(cycleTimer);
+  cycleTimer = setTimeout(loadVignette, GRACE_PERIOD_ON_LOAD * 1000);
+  loadInPagePush(); // Home is the default active view on login, so start it immediately
 }
 
-// Pause the whole cycle if the user leaves the tab, resume cleanly when they come back
+// Pause the cycle while the tab is hidden — don't burn ad slots on a
+// backgrounded tab, and don't resume until the user is actually back.
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && !adTimer) {
-    scheduleNextAd();
+  if (document.hidden) {
+    clearTimeout(cycleTimer);
+    if (scriptEl) {
+      scriptEl.remove();
+      scriptEl = null;
+    }
+  } else if (!scriptEl && cyclesRun < MAX_CYCLES_PER_SESSION) {
+    clearTimeout(cycleTimer);
+    cycleTimer = setTimeout(loadVignette, 5000);
   }
 });
+
+// ============================================================
+// MONETAG ONCLICK (POPUNDER) — only live on Leaderboard & Profile
+// ============================================================
+// OnClick fires on the NEXT click anywhere on the page after it loads, and
+// keeps listening once loaded. To keep it away from the Earn Coins button
+// entirely, we only ever insert this script while the user is actually on
+// the Leaderboard or Profile screen, and rip it out the instant they leave.
+// It is NEVER present while home-view (with the Earn button) is active.
+
+const ONCLICK_ZONE = "11907052";
+const ONCLICK_SRC = "https://al5sm.com/tag.min.js";
+const MAX_ONCLICK_TRIGGERS_PER_SESSION = 15;
+
+let onclickScriptEl = null;
+let onclickLoadsThisSession = 0;
+
+function loadOnclickAd() {
+  if (onclickScriptEl) return; // already active
+  if (onclickLoadsThisSession >= MAX_ONCLICK_TRIGGERS_PER_SESSION) return;
+
+  onclickScriptEl = document.createElement("script");
+  onclickScriptEl.dataset.zone = ONCLICK_ZONE;
+  onclickScriptEl.src = ONCLICK_SRC;
+  onclickScriptEl.id = "onclick-ad-script";
+  document.body.appendChild(onclickScriptEl);
+
+  onclickLoadsThisSession += 1;
+}
+
+function unloadOnclickAd() {
+  if (onclickScriptEl) {
+    onclickScriptEl.remove();
+    onclickScriptEl = null;
+  }
+}
+
+// ============================================================
+// MONETAG IN-PAGE PUSH (BANNER) — persistent while on Home screen
+// ============================================================
+// Unlike Vignette/OnClick, this format is meant to sit quietly in the page
+// for as long as the user is actively browsing — not fire-and-remove. We
+// scope it to the Home screen (where Earn Coins lives) since that's where
+// you want it, matching Vignette. It's unloaded on Leaderboard/Profile so
+// it doesn't stack with the OnClick ad running there.
+
+const INPAGE_ZONE = "11907055";
+const INPAGE_SRC = "https://nap5k.com/tag.min.js";
+
+let inPageScriptEl = null;
+
+function loadInPagePush() {
+  if (inPageScriptEl) return; // already active
+
+  inPageScriptEl = document.createElement("script");
+  inPageScriptEl.dataset.zone = INPAGE_ZONE;
+  inPageScriptEl.src = INPAGE_SRC;
+  inPageScriptEl.id = "inpage-push-script";
+  document.body.appendChild(inPageScriptEl);
+}
+
+function unloadInPagePush() {
+  if (inPageScriptEl) {
+    inPageScriptEl.remove();
+    inPageScriptEl = null;
+  }
+}
