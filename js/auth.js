@@ -19,10 +19,16 @@ async function handleSignup() {
     return;
   }
 
+  const turnstileToken = document.querySelector('input[name="cf-turnstile-response"]')?.value;
+  if (!turnstileToken) {
+    errorEl.textContent = "Please complete the verification.";
+    return;
+  }
+
   try {
     const data = await apiRequest("/auth/signup", {
       method: "POST",
-      body: JSON.stringify({ username, password, referralCode: referral || null }),
+      body: JSON.stringify({ username, password, referralCode: referral || null, turnstileToken }),
     });
     setToken(data.token);
     await loadApp();
@@ -58,7 +64,6 @@ function handleLogout() {
   clearToken();
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("auth-screen").classList.add("active");
-  // safety: never leave any ad script active past logout
   if (typeof unloadOnclickAd === "function") unloadOnclickAd();
   if (typeof unloadInPagePush === "function") unloadInPagePush();
 }

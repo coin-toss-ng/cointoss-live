@@ -4,11 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Coin App</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=2">
 
-<!-- ==== MONETAG: paste your Interstitial zone script here, exactly as Monetag gives it to you ==== -->
-<!-- <script src="//libtl.com/sdk.js" data-zone="XXXXXXX" data-sdk="show_XXXXXXX"></script> -->
-<!-- ================================================================================================ -->
+<meta name="monetag" content="2782595552a5addfbb59464c6e51a5fc">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 
@@ -31,6 +30,7 @@
         <input id="signup-username" type="text" placeholder="Username" autocomplete="username">
         <input id="signup-password" type="password" placeholder="Password" autocomplete="new-password">
         <input id="signup-referral" type="text" placeholder="Referral code (optional)">
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAFFicNPt50ADOBq_" data-callback="onTurnstileSuccess"></div>
         <button class="btn-primary" onclick="handleSignup()">Sign Up</button>
         <p class="switch-link">Have an account? <a onclick="showLogin()">Log in</a></p>
         <p id="signup-error" class="error-text"></p>
@@ -111,9 +111,9 @@
     </nav>
   </div>
 
-  <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/ads.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/api.js?v=2"></script>
+  <script src="js/auth.js?v=2"></script>
+  <script src="js/ads.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
 </body>
 </html>
