@@ -23,7 +23,7 @@ function unloadInPagePush() {
 }
 
 function initAds() {
-  loadInPagePush();
+  // loadInPagePush(); // temporarily disabled to test whether this is the source of repeated popups
 }
 
 // ============================================================
