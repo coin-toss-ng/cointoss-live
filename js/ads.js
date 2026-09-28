@@ -1,5 +1,5 @@
 // ============================================================
-// MONETAG IN-PAGE PUSH (BANNER) — persistent while on Home screen
+// MONETAG IN-PAGE PUSH (BANNER) — unchanged, loads directly in the page
 // ============================================================
 const INPAGE_ZONE = "11907055";
 const INPAGE_SRC = "https://nap5k.com/tag.min.js";
@@ -23,29 +23,56 @@ function unloadInPagePush() {
 }
 
 // ============================================================
-// MONETAG ONCLICK — HARD DAILY CAP ON ACTUAL POPUPS, REGARDLESS OF TRIGGER
+// MONETAG ONCLICK — CONTAINED IN A SANDBOXED IFRAME
 // ============================================================
-// This script doesn't reliably respect being "armed" only after an earn
-// click — it opens windows on its own timing too. So instead of trying to
-// control WHEN it's allowed to fire, we count every real popup that
-// actually succeeds, at every way it can open one (window.open, a
-// simulated click on a target="_blank" link, or calling .click() directly
-// on such a link even if it's not attached to the page). Once 5 have
-// happened today, everything is blocked, full stop, no matter what
-// triggered it. A minimum interval between opens is enforced the same way,
-// so even the first 5 can't all fire in the first few seconds.
+// Every JS-level trick we tried (window.open override, anchor click
+// interception, .click() override) kept getting bypassed, because the
+// script can open popups through more than one mechanism, some of which
+// aren't reachable from outside JS.
+//
+// This uses a real browser security boundary instead: an iframe with the
+// `sandbox` attribute, WITHOUT `allow-popups`, cannot open a popup by ANY
+// method — window.open, target="_blank" links, anything. The restriction
+// is enforced by the browser engine itself, not by our code, so it can't
+// be worked around by a clever script.
+//
+// Default state: the iframe has no popup permission at all (fully blocked).
+// When a trigger is earned, we briefly swap in a version of the iframe
+// WITH popup permission, let it run for a few seconds, then swap back to
+// the blocked version.
 
 const ONCLICK_ZONE = "11907052";
 const ONCLICK_SRC = "https://al5sm.com/tag.min.js";
 
 const MAX_OPENS_PER_DAY = 5;
 const MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+const ALLOWED_WINDOW_MS = 4000; // how long popups are permitted once granted
+
+let onclickIframe = null;
+
+function iframeHtml() {
+  return `<script src="${ONCLICK_SRC}" data-zone="${ONCLICK_ZONE}"></script>`;
+}
+
+function createBlockedIframe() {
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.sandbox = "allow-scripts allow-same-origin"; // deliberately NO allow-popups
+  iframe.srcdoc = iframeHtml();
+  document.body.appendChild(iframe);
+  return iframe;
+}
+
+function initAds() {
+  loadInPagePush();
+  onclickIframe = createBlockedIframe(); // present, but structurally unable to open popups
+}
 
 function getOpenState() {
   const today = new Date().toDateString();
   const raw = localStorage.getItem("adOpenState");
   const state = raw ? JSON.parse(raw) : { date: today, count: 0, lastOpen: 0 };
-  if (state.date !== today) return { date: today, count: 0, lastOpen: 0 }; // new day, reset
+  if (state.date !== today) return { date: today, count: 0, lastOpen: 0 };
   return state;
 }
 
@@ -53,69 +80,32 @@ function saveOpenState(state) {
   localStorage.setItem("adOpenState", JSON.stringify(state));
 }
 
-// Returns true if this open is allowed (and records it). Returns false if
-// it should be blocked — either the daily cap or the interval hasn't passed.
-function allowOpenAndRecord() {
+function triggerEarnClickAd() {
   const state = getOpenState();
   const now = Date.now();
 
-  if (state.count >= MAX_OPENS_PER_DAY) return false;
-  if (now - state.lastOpen < MIN_INTERVAL_MS) return false;
+  if (state.count >= MAX_OPENS_PER_DAY) return; // daily cap reached
+  if (now - state.lastOpen < MIN_INTERVAL_MS) return; // too soon since last one
 
   saveOpenState({ date: state.date, count: state.count + 1, lastOpen: now });
-  return true;
-}
 
-// Layer 1 — window.open()
-const originalWindowOpen = window.open;
-window.open = function (...args) {
-  if (allowOpenAndRecord()) return originalWindowOpen.apply(window, args);
-  return null;
-};
+  // swap to a briefly-unblocked iframe
+  if (onclickIframe) onclickIframe.remove();
+  const openIframe = document.createElement("iframe");
+  openIframe.style.display = "none";
+  openIframe.sandbox = "allow-scripts allow-same-origin allow-popups";
+  openIframe.srcdoc = iframeHtml();
+  document.body.appendChild(openIframe);
+  onclickIframe = openIframe;
 
-// Layer 2 — simulated clicks (real or script-dispatched) on <a target="_blank">,
-// caught in the capture phase, before the ad script's own handling runs.
-document.addEventListener(
-  "click",
-  function (e) {
-    const link = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
-    if (link && !allowOpenAndRecord()) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
+  setTimeout(() => {
+    if (onclickIframe === openIframe) {
+      openIframe.remove();
+      onclickIframe = createBlockedIframe(); // back to structurally blocked
     }
-  },
-  true
-);
-
-// Layer 3 — the .click() method itself, in case the element is never
-// attached to the document (which would skip the capture listener above).
-const originalAnchorClick = HTMLAnchorElement.prototype.click;
-HTMLAnchorElement.prototype.click = function (...args) {
-  if (this.target === "_blank" && !allowOpenAndRecord()) return; // blocked
-  return originalAnchorClick.apply(this, args);
-};
-
-let onclickLoaded = false;
-function loadOnclickAd() {
-  if (onclickLoaded) return;
-  onclickLoaded = true;
-
-  const s = document.createElement("script");
-  s.dataset.zone = ONCLICK_ZONE;
-  s.src = ONCLICK_SRC;
-  s.id = "onclick-ad-script";
-  document.body.appendChild(s);
+  }, ALLOWED_WINDOW_MS);
 }
 
+// kept as harmless no-ops so nothing elsewhere in the app breaks
+function loadOnclickAd() {}
 function unloadOnclickAd() {}
-
-// The earn button no longer needs to "arm" anything — the cap above applies
-// globally and automatically. We just make sure the script is loaded.
-function triggerEarnClickAd() {
-  loadOnclickAd();
-}
-
-function initAds() {
-  loadInPagePush();
-  loadOnclickAd(); // load once at login; the cap above governs everything from here
-}
