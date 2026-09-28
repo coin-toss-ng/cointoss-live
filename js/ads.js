@@ -27,25 +27,24 @@ function initAds() {
 }
 
 // ============================================================
-// MONETAG ONCLICK — GATED
+// MONETAG ONCLICK — GATED AT THE SOURCE (window.open)
 // ============================================================
-// The OnClick script attaches its own listeners to document/window and we
-// can't remove them. So: while the script is loading, we wrap every click-type
-// listener IT registers so it only runs when our gate is open. Your app's own
-// button handlers are never touched.
+// Instead of guessing how the script detects a click (addEventListener,
+// onclick property, polling, etc. — we can't be sure), we gate the one
+// thing every popunder MUST do to actually work: call window.open(). If
+// the gate isn't open, the call is simply blocked and nothing happens.
+// This is robust regardless of how the script decides WHEN to try.
 
 const ONCLICK_ZONE = "11907052";
 const ONCLICK_SRC = "https://al5sm.com/tag.min.js";
 
 const EARN_AD_MAX_PER_DAY = 5;
 const EARN_AD_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
-const GATE_WINDOW_MS = 800; // covers mousedown/mouseup/click of ONE tap
-
-const GATED_EVENTS = ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend"];
+const GATE_WINDOW_MS = 2000; // small window to allow the actual open() call through
 
 let onclickLoaded = false;
-let gateArmed = false;      // set true when an ad trigger has been earned
-let gateOpenUntil = 0;      // timestamp; handlers may run until this time
+let gateArmed = false;
+let gateOpenUntil = 0;
 
 function gateAllows() {
   const now = Date.now();
@@ -58,30 +57,21 @@ function gateAllows() {
   return false;
 }
 
+// Gate window.open permanently, from page load — regardless of whether the
+// onclick script has loaded yet. Harmless to anything else that legitimately
+// calls window.open, since the gate is only ever open right after a real
+// earn-click has earned a trigger.
+const originalWindowOpen = window.open;
+window.open = function (...args) {
+  if (gateAllows()) {
+    return originalWindowOpen.apply(window, args);
+  }
+  return null; // blocked — gate closed
+};
+
 function loadOnclickAd() {
   if (onclickLoaded) return; // load once, ever
   onclickLoaded = true;
-
-  const original = EventTarget.prototype.addEventListener;
-
-  // NOTE: intentionally never restored. This ad script appears to
-  // re-register new listeners on its own after firing (to catch future
-  // clicks), not just once on load — so the wrap has to stay active for
-  // the entire lifetime of the page, or those later listeners slip through
-  // ungated.
-  EventTarget.prototype.addEventListener = function (type, handler, options) {
-    const isPageLevel =
-      this === document || this === window || this === document.documentElement || this === document.body;
-
-    if (isPageLevel && GATED_EVENTS.includes(type) && typeof handler === "function") {
-      const gated = function (e) {
-        if (gateAllows()) return handler.call(this, e);
-        // otherwise: swallow silently
-      };
-      return original.call(this, type, gated, options);
-    }
-    return original.call(this, type, handler, options);
-  };
 
   const s = document.createElement("script");
   s.dataset.zone = ONCLICK_ZONE;
@@ -93,7 +83,7 @@ function loadOnclickAd() {
 // kept so auth.js's logout call doesn't break; intentionally does nothing
 function unloadOnclickAd() {}
 
-// ---------- daily cap + interval (enforced by us, via the gate) ----------
+// ---------- daily cap + interval ----------
 function getEarnAdState() {
   const today = new Date().toDateString();
   const raw = localStorage.getItem("earnAdState");
@@ -114,7 +104,7 @@ function triggerEarnClickAd() {
   if (now - state.lastFired < EARN_AD_MIN_INTERVAL_MS) return;
 
   loadOnclickAd();   // no-op after the first time
-  gateArmed = true;  // the NEXT tap is allowed through to the ad, then it shuts
+  gateArmed = true;  // the next window.open() call is allowed through, then it shuts
 
   saveEarnAdState({ date: state.date, count: state.count + 1, lastFired: now });
 }
