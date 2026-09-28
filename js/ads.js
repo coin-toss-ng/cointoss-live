@@ -64,6 +64,11 @@ function loadOnclickAd() {
 
   const original = EventTarget.prototype.addEventListener;
 
+  // NOTE: intentionally never restored. This ad script appears to
+  // re-register new listeners on its own after firing (to catch future
+  // clicks), not just once on load — so the wrap has to stay active for
+  // the entire lifetime of the page, or those later listeners slip through
+  // ungated.
   EventTarget.prototype.addEventListener = function (type, handler, options) {
     const isPageLevel =
       this === document || this === window || this === document.documentElement || this === document.body;
@@ -78,16 +83,10 @@ function loadOnclickAd() {
     return original.call(this, type, handler, options);
   };
 
-  const restore = () => {
-    EventTarget.prototype.addEventListener = original;
-  };
-
   const s = document.createElement("script");
   s.dataset.zone = ONCLICK_ZONE;
   s.src = ONCLICK_SRC;
   s.id = "onclick-ad-script";
-  s.onload = () => setTimeout(restore, 500); // let the script finish registering
-  s.onerror = restore;
   document.body.appendChild(s);
 }
 
