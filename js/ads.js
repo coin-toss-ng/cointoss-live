@@ -23,24 +23,26 @@ function unloadInPagePush() {
 }
 
 function initAds() {
-  // loadInPagePush(); // temporarily disabled to test whether this is the source of repeated popups
+  loadInPagePush();
 }
 
 // ============================================================
-// MONETAG ONCLICK — GATED AT THE SOURCE (window.open)
+// MONETAG ONCLICK — GATED (window.open AND simulated anchor clicks)
 // ============================================================
-// Instead of guessing how the script detects a click (addEventListener,
-// onclick property, polling, etc. — we can't be sure), we gate the one
-// thing every popunder MUST do to actually work: call window.open(). If
-// the gate isn't open, the call is simply blocked and nothing happens.
-// This is robust regardless of how the script decides WHEN to try.
+// This script doesn't only use window.open() — it also opens new tabs by
+// creating a hidden <a target="_blank"> and simulating a click on it,
+// which completely bypasses a window.open override. So we gate BOTH:
+// 1) window.open() calls directly
+// 2) any click (real or script-simulated) on an <a target="_blank">,
+//    caught via a permanent capture-phase listener on document, which
+//    fires before the ad script's own handling and can cancel it outright.
 
 const ONCLICK_ZONE = "11907052";
 const ONCLICK_SRC = "https://al5sm.com/tag.min.js";
 
 const EARN_AD_MAX_PER_DAY = 5;
 const EARN_AD_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
-const GATE_WINDOW_MS = 2000; // small window to allow the actual open() call through
+const GATE_WINDOW_MS = 2000;
 
 let onclickLoaded = false;
 let gateArmed = false;
@@ -57,20 +59,39 @@ function gateAllows() {
   return false;
 }
 
-// Gate window.open permanently, from page load — regardless of whether the
-// onclick script has loaded yet. Harmless to anything else that legitimately
-// calls window.open, since the gate is only ever open right after a real
-// earn-click has earned a trigger.
+// Layer 1 — window.open()
 const originalWindowOpen = window.open;
 window.open = function (...args) {
-  if (gateAllows()) {
-    return originalWindowOpen.apply(window, args);
-  }
-  return null; // blocked — gate closed
+  if (gateAllows()) return originalWindowOpen.apply(window, args);
+  return null;
+};
+
+// Layer 2 — simulated clicks on <a target="_blank">, real or script-dispatched.
+// Capture phase runs before the ad script's own handling, and preventDefault()
+// on a click event cancels the link's default navigation regardless of
+// whether a real user or a script triggered it.
+document.addEventListener(
+  "click",
+  function (e) {
+    const link = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
+    if (link && !gateAllows()) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  },
+  true
+);
+
+// Layer 3 — the .click() method itself, in case the element is never
+// attached to the document (which would skip the capture listener above).
+const originalAnchorClick = HTMLAnchorElement.prototype.click;
+HTMLAnchorElement.prototype.click = function (...args) {
+  if (this.target === "_blank" && !gateAllows()) return; // blocked
+  return originalAnchorClick.apply(this, args);
 };
 
 function loadOnclickAd() {
-  if (onclickLoaded) return; // load once, ever
+  if (onclickLoaded) return;
   onclickLoaded = true;
 
   const s = document.createElement("script");
@@ -80,7 +101,6 @@ function loadOnclickAd() {
   document.body.appendChild(s);
 }
 
-// kept so auth.js's logout call doesn't break; intentionally does nothing
 function unloadOnclickAd() {}
 
 // ---------- daily cap + interval ----------
@@ -103,8 +123,8 @@ function triggerEarnClickAd() {
   if (state.count >= EARN_AD_MAX_PER_DAY) return;
   if (now - state.lastFired < EARN_AD_MIN_INTERVAL_MS) return;
 
-  loadOnclickAd();   // no-op after the first time
-  gateArmed = true;  // the next window.open() call is allowed through, then it shuts
+  loadOnclickAd();
+  gateArmed = true;
 
   saveEarnAdState({ date: state.date, count: state.count + 1, lastFired: now });
 }
