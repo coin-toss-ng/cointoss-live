@@ -22,59 +22,64 @@ function unloadInPagePush() {
   }
 }
 
-function initAds() {
-  loadInPagePush();
-}
-
 // ============================================================
-// MONETAG ONCLICK — GATED (window.open AND simulated anchor clicks)
+// MONETAG ONCLICK — HARD DAILY CAP ON ACTUAL POPUPS, REGARDLESS OF TRIGGER
 // ============================================================
-// This script doesn't only use window.open() — it also opens new tabs by
-// creating a hidden <a target="_blank"> and simulating a click on it,
-// which completely bypasses a window.open override. So we gate BOTH:
-// 1) window.open() calls directly
-// 2) any click (real or script-simulated) on an <a target="_blank">,
-//    caught via a permanent capture-phase listener on document, which
-//    fires before the ad script's own handling and can cancel it outright.
+// This script doesn't reliably respect being "armed" only after an earn
+// click — it opens windows on its own timing too. So instead of trying to
+// control WHEN it's allowed to fire, we count every real popup that
+// actually succeeds, at every way it can open one (window.open, a
+// simulated click on a target="_blank" link, or calling .click() directly
+// on such a link even if it's not attached to the page). Once 5 have
+// happened today, everything is blocked, full stop, no matter what
+// triggered it. A minimum interval between opens is enforced the same way,
+// so even the first 5 can't all fire in the first few seconds.
 
 const ONCLICK_ZONE = "11907052";
 const ONCLICK_SRC = "https://al5sm.com/tag.min.js";
 
-const EARN_AD_MAX_PER_DAY = 5;
-const EARN_AD_MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
-const GATE_WINDOW_MS = 2000;
+const MAX_OPENS_PER_DAY = 5;
+const MIN_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
 
-let onclickLoaded = false;
-let gateArmed = false;
-let gateOpenUntil = 0;
+function getOpenState() {
+  const today = new Date().toDateString();
+  const raw = localStorage.getItem("adOpenState");
+  const state = raw ? JSON.parse(raw) : { date: today, count: 0, lastOpen: 0 };
+  if (state.date !== today) return { date: today, count: 0, lastOpen: 0 }; // new day, reset
+  return state;
+}
 
-function gateAllows() {
+function saveOpenState(state) {
+  localStorage.setItem("adOpenState", JSON.stringify(state));
+}
+
+// Returns true if this open is allowed (and records it). Returns false if
+// it should be blocked — either the daily cap or the interval hasn't passed.
+function allowOpenAndRecord() {
+  const state = getOpenState();
   const now = Date.now();
-  if (now < gateOpenUntil) return true;
-  if (gateArmed) {
-    gateArmed = false;
-    gateOpenUntil = now + GATE_WINDOW_MS;
-    return true;
-  }
-  return false;
+
+  if (state.count >= MAX_OPENS_PER_DAY) return false;
+  if (now - state.lastOpen < MIN_INTERVAL_MS) return false;
+
+  saveOpenState({ date: state.date, count: state.count + 1, lastOpen: now });
+  return true;
 }
 
 // Layer 1 — window.open()
 const originalWindowOpen = window.open;
 window.open = function (...args) {
-  if (gateAllows()) return originalWindowOpen.apply(window, args);
+  if (allowOpenAndRecord()) return originalWindowOpen.apply(window, args);
   return null;
 };
 
-// Layer 2 — simulated clicks on <a target="_blank">, real or script-dispatched.
-// Capture phase runs before the ad script's own handling, and preventDefault()
-// on a click event cancels the link's default navigation regardless of
-// whether a real user or a script triggered it.
+// Layer 2 — simulated clicks (real or script-dispatched) on <a target="_blank">,
+// caught in the capture phase, before the ad script's own handling runs.
 document.addEventListener(
   "click",
   function (e) {
     const link = e.target && e.target.closest ? e.target.closest('a[target="_blank"]') : null;
-    if (link && !gateAllows()) {
+    if (link && !allowOpenAndRecord()) {
       e.preventDefault();
       e.stopImmediatePropagation();
     }
@@ -86,10 +91,11 @@ document.addEventListener(
 // attached to the document (which would skip the capture listener above).
 const originalAnchorClick = HTMLAnchorElement.prototype.click;
 HTMLAnchorElement.prototype.click = function (...args) {
-  if (this.target === "_blank" && !gateAllows()) return; // blocked
+  if (this.target === "_blank" && !allowOpenAndRecord()) return; // blocked
   return originalAnchorClick.apply(this, args);
 };
 
+let onclickLoaded = false;
 function loadOnclickAd() {
   if (onclickLoaded) return;
   onclickLoaded = true;
@@ -103,28 +109,13 @@ function loadOnclickAd() {
 
 function unloadOnclickAd() {}
 
-// ---------- daily cap + interval ----------
-function getEarnAdState() {
-  const today = new Date().toDateString();
-  const raw = localStorage.getItem("earnAdState");
-  const state = raw ? JSON.parse(raw) : { date: today, count: 0, lastFired: 0 };
-  if (state.date !== today) return { date: today, count: 0, lastFired: 0 };
-  return state;
-}
-
-function saveEarnAdState(state) {
-  localStorage.setItem("earnAdState", JSON.stringify(state));
-}
-
+// The earn button no longer needs to "arm" anything — the cap above applies
+// globally and automatically. We just make sure the script is loaded.
 function triggerEarnClickAd() {
-  const state = getEarnAdState();
-  const now = Date.now();
-
-  if (state.count >= EARN_AD_MAX_PER_DAY) return;
-  if (now - state.lastFired < EARN_AD_MIN_INTERVAL_MS) return;
-
   loadOnclickAd();
-  gateArmed = true;
+}
 
-  saveEarnAdState({ date: state.date, count: state.count + 1, lastFired: now });
+function initAds() {
+  loadInPagePush();
+  loadOnclickAd(); // load once at login; the cap above governs everything from here
 }
