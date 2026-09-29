@@ -19,7 +19,7 @@ async function loadApp() {
     loadMessages();
     loadLeaderboard();
     renderProfile();
-    initAds(); // start the timed interstitial cycle now that the user is in the app
+    initAds();
   } catch (e) {
     clearToken();
     document.getElementById("app-screen").classList.remove("active");
@@ -35,13 +35,6 @@ function switchView(viewId, btn) {
 
   if (viewId === "leaderboard-view") loadLeaderboard();
   if (viewId === "profile-view") renderProfile();
-
-  // OnClick now lives on the Earn button (capped), so it's no longer tied to Leaderboard/Profile.
-  if (viewId === "leaderboard-view" || viewId === "profile-view") {
-    unloadInPagePush();
-  } else {
-    loadInPagePush();
-  }
 }
 
 function renderHome() {
@@ -49,6 +42,44 @@ function renderHome() {
   document.getElementById("card-coins").textContent = currentUser.coins;
   document.getElementById("card-rank").textContent = currentUser.rank;
   applyCooldownState();
+  applyDirectLinkState();
+}
+
+const DIRECT_LINK_URL = "https://omg10.com/4/11916274";
+const DIRECT_LINK_MAX_PER_DAY = 3;
+
+async function handleDirectLinkClick() {
+  try {
+    const data = await apiRequest("/coins/direct-link-claim", { method: "POST" });
+    currentUser.coins = data.coins;
+    currentUser.lifetime_coins = data.lifetime_coins;
+    currentUser.rank = data.rank;
+    currentUser.last_direct_link_claim = data.last_direct_link_claim;
+    currentUser.direct_link_claims_today = data.direct_link_claims_today;
+    renderHome();
+    window.open(DIRECT_LINK_URL, "_blank");
+  } catch (e) {
+    document.getElementById("direct-link-text").textContent = e.message;
+  }
+}
+
+function applyDirectLinkState() {
+  const btn = document.getElementById("direct-link-btn");
+  const text = document.getElementById("direct-link-text");
+
+  const lastClaimDay = currentUser.last_direct_link_claim
+    ? new Date(currentUser.last_direct_link_claim).toDateString()
+    : null;
+  const today = new Date().toDateString();
+  const claimsToday = lastClaimDay === today ? (currentUser.direct_link_claims_today || 0) : 0;
+
+  if (claimsToday >= DIRECT_LINK_MAX_PER_DAY) {
+    btn.disabled = true;
+    text.textContent = "Daily limit reached (3/3). Come back tomorrow.";
+  } else {
+    btn.disabled = false;
+    text.textContent = `${claimsToday}/${DIRECT_LINK_MAX_PER_DAY} claimed today`;
+  }
 }
 
 function renderProfile() {
